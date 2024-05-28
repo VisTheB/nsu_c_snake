@@ -1,10 +1,6 @@
 #include "raylib.h"
 #include <stdio.h>
 
-#if defined(PLATFORM_WEB)
-    #include <emscripten/emscripten.h>
-#endif
-
 #define SNAKE_LENGTH 256
 #define SQUARE_SIZE 31
 
@@ -32,6 +28,7 @@ static const int fieldHeight = 450 - SQUARE_SIZE*2;
 static int framesCounter = 0;
 static int score = 0;
 static int difficulty = 1;
+static double time;
 static bool gameOver = false;
 static bool pause = false;
 
@@ -57,20 +54,29 @@ int main() {
 
     InitWindow(screenWidth, screenHeight, "Sssssnake"); 
 
-    InitGame();
+    Image gameOverImg = LoadImage("durak.jpg");
+    Texture2D texture = LoadTextureFromImage(gameOverImg);
 
-#if defined(PLATFORM_WEB)
-    emscripten_set_main_loop(UpdateDrawFrame, 60, 1);
-#else
+    InitAudioDevice();
+    Music music = LoadMusicStream("Crazy_Frog.mp3");
+    music.looping = false;
+
+    InitGame();
+    PlayMusicStream(music);
+
     SetTargetFPS(35); // скорость игры
-    //--------------------------------------------------------------------------------------
-    // Main game loop
+    
     while (!WindowShouldClose()) {
 
-        UpdateDrawFrame();
+        UpdateMusicStream(music); 
+        UpdateDrawFrame(texture);
 
     }
-#endif
+
+    UnloadImage(gameOverImg);
+
+    UnloadMusicStream(music);
+    CloseAudioDevice();
 
     CloseWindow();
 
@@ -89,6 +95,7 @@ void InitGame() { // set initial values
 
     difficulty = 1;
     score = 0;
+    time = 0;
 
     offset.x = screenWidth % SQUARE_SIZE; // 800 % 31 = 25
     offset.y = fieldHeight % SQUARE_SIZE; // 388 % 31 = 16
@@ -225,8 +232,7 @@ void UpdateGame() {
 
             // Same for superFruit
             // superFruit position calculation
-            //
-            if((difficulty >= 2) && ((framesCounter / 35) % 8 == 0)) allowSuperFruit = true;
+            if(difficulty >= 2) allowSuperFruit = true;
             if (!superFruit.active && allowSuperFruit) {
                 superFruit.active = true;
                 superFruit.position = (Vector2){GetRandomValue(0, (screenWidth/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.x/2, GetRandomValue(0, (fieldHeight/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.y/2 };
@@ -247,19 +253,10 @@ void UpdateGame() {
             if ((snake[0].position.x < (superFruit.position.x + superFruit.size.x) && (snake[0].position.x + snake[0].size.x) > superFruit.position.x) &&
                 (snake[0].position.y < (superFruit.position.y + superFruit.size.y) && (snake[0].position.y + snake[0].size.y) > superFruit.position.y))
             {
-                // for(int j = 1; j <= 2 ; j++) {
-                //     snake[tailLength].position = snakePosition[tailLength - 1];
-                //     snakePosition[tailLength] = snake[tailLength].position;
-                //     tailLength += 1;
-                // }
                 snake[tailLength].position = snakePosition[tailLength - 1];
-                //snakePosition[tailLength] = snake[tailLength].position;
                 tailLength += 1;
-                //snake[tailLength].position = snakePosition[tailLength - 1];
-                //snakePosition[tailLength] = snake[tailLength].position;
-                //tailLength += 1;
 
-                score += 2;
+                score += 1;
                 superFruit.active = false;
                 allowSuperFruit = false;
             }
@@ -280,7 +277,7 @@ void UpdateGame() {
         }
 }
 
-void DrawGame() {
+void DrawGame(Texture2D texture) {
     
     BeginDrawing();
     ClearBackground(RAYWHITE);
@@ -300,7 +297,7 @@ void DrawGame() {
 
         // Draw fruit
         DrawRectangleV(fruit.position, fruit.size, fruit.color);
-
+        // Draw superFruit
         if(superFruit.active) DrawRectangleV(superFruit.position, superFruit.size, superFruit.color);
 
         if (pause) DrawText("PAUSED", screenWidth/2 - MeasureText("PAUSED", 50)/2, fieldHeight/2 - 40, 50, RED);
@@ -318,17 +315,20 @@ void DrawGame() {
         DrawText(diffStr, screenWidth - offset.x/2 - 30, screenHeight - SQUARE_SIZE - 25, 28, RED);
 
         char timeStr[256];
-        float time2 = framesCounter;
-        sprintf(timeStr, "%d", tailLength);
+        time = GetTime();
+        sprintf(timeStr, "%d", (int)time);
         DrawText(timeStr, screenWidth/2 - MeasureText(timeStr, 28)/2, screenHeight - SQUARE_SIZE - 25, 28, RED);
     }
 
-    else DrawText("PRESS [ENTER] TO PLAY AGAIN", GetScreenWidth()/2 - MeasureText("PRESS [ENTER] TO PLAY AGAIN", 30)/2, fieldHeight/2 - 50, 30, RED);
+    else {
+        DrawText("LOOSER, [ENTER] TO PLAY AGAIN", GetScreenWidth()/2 - MeasureText("LOOSER, [ENTER] TO PLAY AGAIN", 30)/2, fieldHeight/2 - 50, 30, RED);
+        DrawTexture(texture, screenWidth/2 - texture.width/2, screenHeight/2 - texture.height/2 - 40, GREEN);
+    }
 
     EndDrawing();
 }
 
-void UpdateDrawFrame() {
+void UpdateDrawFrame(Texture2D texture) {
     UpdateGame();
-    DrawGame();
+    DrawGame(texture);
 }
