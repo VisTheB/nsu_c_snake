@@ -37,6 +37,7 @@ static Food superFruit = {0};
 static Snake snake[SNAKE_LENGTH] = {0}; // snake itself
 static Vector2 snakePosition[SNAKE_LENGTH] = {0}; // auxiliary array for snake movement
 static bool allowMove = false;
+static bool allowFruit = true;
 static bool allowSuperFruit = false;
 static Vector2 offset = {0};
 static int tailLength = 0;
@@ -48,14 +49,12 @@ static void InitGame();         // Initialize game
 static void UpdateGame();       // Update game (one frame)
 static void DrawGame();         // Draw game (one frame)
 static void UpdateDrawFrame();  // Update and Draw (one frame)
+static void manageFruit(Food *fruit, bool *allowSuperFruit2, bool isSuperFruit); // updates fruit variables
 
 
 int main() {
 
     InitWindow(screenWidth, screenHeight, "Sssssnake"); 
-
-    Image gameOverImg = LoadImage("durak.jpg");
-    Texture2D texture = LoadTextureFromImage(gameOverImg);
 
     InitAudioDevice();
     Music music = LoadMusicStream("Crazy_Frog.mp3");
@@ -69,11 +68,9 @@ int main() {
     while (!WindowShouldClose()) {
 
         UpdateMusicStream(music); 
-        UpdateDrawFrame(texture);
+        UpdateDrawFrame();
 
     }
-
-    UnloadImage(gameOverImg);
 
     UnloadMusicStream(music);
     CloseAudioDevice();
@@ -92,6 +89,7 @@ void InitGame() { // set initial values
     tailLength = 1;
     allowMove = false;
     allowSuperFruit = false;
+    allowFruit = true;
 
     difficulty = 1;
     score = 0;
@@ -101,7 +99,7 @@ void InitGame() { // set initial values
     offset.y = fieldHeight % SQUARE_SIZE; // 388 % 31 = 16
 
     for (int i = 0; i < SNAKE_LENGTH; i++) { 
-        snake[i].position = (Vector2){ offset.x/2, offset.y/2 }; // x = 16 / 2 = 8
+        snake[i].position = (Vector2){ offset.x/2, offset.y/2 }; // y = 16 / 2 = 8
         snake[i].size = (Vector2){ SQUARE_SIZE, SQUARE_SIZE };
         snake[i].speed = (Vector2){ SQUARE_SIZE, 0 };
 
@@ -116,7 +114,7 @@ void InitGame() { // set initial values
     fruit.active = false;
 
     superFruit.size = (Vector2){ SQUARE_SIZE, SQUARE_SIZE };
-    superFruit.color = YELLOW;
+    superFruit.color = GOLD;
     superFruit.active = false;
 }
 
@@ -179,8 +177,8 @@ void UpdateGame() {
                 } 
                 break;
             case 2: // only side walls are dangerous
-                if (((snake[0].position.x) > (screenWidth - offset.x)) ||
-                    (snake[0].position.x < 0)) {
+                if (((snake[0].position.x) > (screenWidth - offset.x - SQUARE_SIZE)) ||
+                    (snake[0].position.x < SQUARE_SIZE)) {
                     gameOver = true;
                 }
 
@@ -193,9 +191,9 @@ void UpdateGame() {
                 
                 break;
             case 3: // all four walls are dangerous
-                if (((snake[0].position.x) > (screenWidth - offset.x)) ||
-                   ((snake[0].position.y) > (fieldHeight - offset.y)) ||
-                   (snake[0].position.x < 0) || (snake[0].position.y < 0)) {
+                if (((snake[0].position.x) > (screenWidth - offset.x - SQUARE_SIZE)) ||
+                   ((snake[0].position.y) > (fieldHeight - offset.y - SQUARE_SIZE)) ||
+                   (snake[0].position.x < SQUARE_SIZE) || (snake[0].position.y < SQUARE_SIZE)) {
                     gameOver = true;
                 }
                 break;
@@ -207,82 +205,39 @@ void UpdateGame() {
                 if ((snake[0].position.x == snake[i].position.x) && (snake[0].position.y == snake[i].position.y)) gameOver = true;
             }
 
-            // Fruit position calculation
-            if (!fruit.active) {
-                fruit.active = true;
-                fruit.position = (Vector2){GetRandomValue(0, (screenWidth/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.x/2, GetRandomValue(0, (fieldHeight/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.y/2 };
-
-                for (int i = 0; i < tailLength; i++) { // if the fruit generates on the snake
-                    while ((fruit.position.x == snake[i].position.x) && (fruit.position.y == snake[i].position.y)) {
-                        fruit.position = (Vector2){ GetRandomValue(0, (screenWidth/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.x/2, GetRandomValue(0, (fieldHeight/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.y/2 };
-                        i = 0;
-                    }
-                }
-            }
-
-            // Collision with the fruit (when head is on it already)
-            if ((snake[0].position.x < (fruit.position.x + fruit.size.x) && (snake[0].position.x + snake[0].size.x) > fruit.position.x) &&
-                (snake[0].position.y < (fruit.position.y + fruit.size.y) && (snake[0].position.y + snake[0].size.y) > fruit.position.y))
-            {
-                snake[tailLength].position = snakePosition[tailLength - 1];
-                tailLength += 1;
-                score += 1;
-                fruit.active = false;
-            }
+            // fruit position calculation
+            manageFruit(&fruit, &allowFruit, false);
+            allowFruit = true;
 
             // Same for superFruit
             // superFruit position calculation
             if(difficulty >= 2) allowSuperFruit = true;
-            if (!superFruit.active && allowSuperFruit) {
-                superFruit.active = true;
-                superFruit.position = (Vector2){GetRandomValue(0, (screenWidth/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.x/2, GetRandomValue(0, (fieldHeight/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.y/2 };
+            manageFruit(&superFruit, &allowSuperFruit, true);
 
-                for (int i = 0; i < tailLength; i++) { // if the superFruit generates on the snake
-                    while ((superFruit.position.x == snake[i].position.x) && (superFruit.position.y == snake[i].position.y)) {
-                        superFruit.position = (Vector2){ GetRandomValue(0, (screenWidth/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.x/2, GetRandomValue(0, (fieldHeight/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.y/2 };
-                        i = 0;
-                    }
-                }
-                // if superFruit generates on usual fruit
-                while ((fruit.position.x == superFruit.position.x) && (fruit.position.y == superFruit.position.y)) {
-                        superFruit.position = (Vector2){ GetRandomValue(0, (screenWidth/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.x/2, GetRandomValue(0, (fieldHeight/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.y/2 };
-                    }
-            }
-
-            // Collision with the superFruit (when head is on it already)
-            if ((snake[0].position.x < (superFruit.position.x + superFruit.size.x) && (snake[0].position.x + snake[0].size.x) > superFruit.position.x) &&
-                (snake[0].position.y < (superFruit.position.y + superFruit.size.y) && (snake[0].position.y + snake[0].size.y) > superFruit.position.y))
-            {
-                snake[tailLength].position = snakePosition[tailLength - 1];
-                tailLength += 1;
-
-                score += 1;
-                superFruit.active = false;
-                allowSuperFruit = false;
-            }
-
-            if(score == 6) {
+            // difficulty change
+            if(score == 7) {
                 difficulty = 2;
-            } else if (score >= 12) {
+            } else if (score >= 15) {
                 difficulty = 3;
             }
 
             framesCounter++;
         }
     } else {
-            if (IsKeyPressed(KEY_ENTER)) {
+            if(IsKeyPressed(KEY_ENTER)) {
                 InitGame();
                 gameOver = false;
             }
         }
 }
 
-void DrawGame(Texture2D texture) {
+void DrawGame() {
     
     BeginDrawing();
     ClearBackground(RAYWHITE);
 
     if(!gameOver) {
+
         // Draw field lines:
         for (int i = 0; i < screenWidth/SQUARE_SIZE + 1; i++) {
             DrawLineV((Vector2){SQUARE_SIZE*i + offset.x/2, offset.y/2}, (Vector2){SQUARE_SIZE*i + offset.x/2, fieldHeight - offset.y/2}, LIGHTGRAY);
@@ -291,6 +246,20 @@ void DrawGame(Texture2D texture) {
         for (int i = 0; i < fieldHeight/SQUARE_SIZE + 1; i++) {
             DrawLineV((Vector2){offset.x/2, SQUARE_SIZE*i + offset.y/2}, (Vector2){screenWidth - offset.x/2, SQUARE_SIZE*i + offset.y/2}, LIGHTGRAY);
         }
+        switch (difficulty) {
+        case 2:
+            DrawRectangleV((Vector2){offset.x/2, offset.y/2}, (Vector2){SQUARE_SIZE, fieldHeight - offset.y}, MAROON);
+            DrawRectangleV((Vector2){screenWidth - offset.x / 2 - SQUARE_SIZE, offset.y/2}, (Vector2){SQUARE_SIZE, fieldHeight - offset.y}, MAROON);
+            break;
+        case 3:
+            DrawRectangleV((Vector2){offset.x/2, offset.y/2}, (Vector2){SQUARE_SIZE, fieldHeight - offset.y}, MAROON);
+            DrawRectangleV((Vector2){screenWidth - offset.x/2 - SQUARE_SIZE, offset.y/2}, (Vector2){SQUARE_SIZE, fieldHeight - offset.y}, MAROON);
+
+            DrawRectangleV((Vector2){offset.x/2, offset.y/2}, (Vector2){screenWidth - offset.x, SQUARE_SIZE}, MAROON);
+            DrawRectangleV((Vector2){offset.x/2, fieldHeight - offset.y/2 - SQUARE_SIZE}, (Vector2){screenWidth - offset.x, SQUARE_SIZE}, MAROON);            
+            break;
+        }
+        
 
         // Draw snake:
         for (int i = 0; i < tailLength; i++) DrawRectangleV(snake[i].position, snake[i].size, snake[i].color);
@@ -303,32 +272,81 @@ void DrawGame(Texture2D texture) {
         if (pause) DrawText("PAUSED", screenWidth/2 - MeasureText("PAUSED", 50)/2, fieldHeight/2 - 40, 50, RED);
 
         // draw score:
-        DrawText("SCORE: ", offset.x/2, screenHeight - SQUARE_SIZE - 25, 28, RED);
+        DrawText("SCORE: ", offset.x/2, screenHeight - SQUARE_SIZE - 25, 28, VIOLET);
         char scoreStr[256];
         sprintf(scoreStr, "%d", score);
-        DrawText(scoreStr, offset.x/2 + SQUARE_SIZE * 4, screenHeight - SQUARE_SIZE - 25, 28, RED);
+        DrawText(scoreStr, offset.x/2 + SQUARE_SIZE * 4, screenHeight - SQUARE_SIZE - 25, 28, VIOLET);
 
         // draw difficulty:
-        DrawText("DIFFICULTY: ", screenWidth - offset.x/2 -  MeasureText("DIFFICULTY: ", 28) - 30, screenHeight - SQUARE_SIZE - 25, 28, RED);
+        DrawText("DIFFICULTY: ", screenWidth - offset.x/2 -  MeasureText("DIFFICULTY: ", 28) - 30, screenHeight - SQUARE_SIZE - 25, 28, VIOLET);
         char diffStr[256];
         sprintf(diffStr, "%d", difficulty);
-        DrawText(diffStr, screenWidth - offset.x/2 - 30, screenHeight - SQUARE_SIZE - 25, 28, RED);
+        DrawText(diffStr, screenWidth - offset.x/2 - 30, screenHeight - SQUARE_SIZE - 25, 28, VIOLET);
 
         char timeStr[256];
         time = GetTime();
         sprintf(timeStr, "%d", (int)time);
-        DrawText(timeStr, screenWidth/2 - MeasureText(timeStr, 28)/2, screenHeight - SQUARE_SIZE - 25, 28, RED);
+        DrawText(timeStr, screenWidth/2 - MeasureText(timeStr, 28)/2, screenHeight - SQUARE_SIZE - 25, 28, VIOLET);
     }
 
     else {
-        DrawText("LOOSER, [ENTER] TO PLAY AGAIN", GetScreenWidth()/2 - MeasureText("LOOSER, [ENTER] TO PLAY AGAIN", 30)/2, fieldHeight/2 - 50, 30, RED);
-        DrawTexture(texture, screenWidth/2 - texture.width/2, screenHeight/2 - texture.height/2 - 40, GREEN);
+        DrawText("LOOSER, [ENTER] TO PLAY AGAIN", GetScreenWidth()/2 - MeasureText("LOOSER, [ENTER] TO PLAY AGAIN", 30)/2, fieldHeight/2 - 50, 30, VIOLET);
     }
 
     EndDrawing();
 }
 
-void UpdateDrawFrame(Texture2D texture) {
+void UpdateDrawFrame() {
     UpdateGame();
-    DrawGame(texture);
+    DrawGame();
+}
+
+void manageFruit(Food *fruit2, bool *allowSuperFruit2, bool isSuperFruit) {
+
+    // Fruit position calculation
+    if (!fruit2->active && (*allowSuperFruit2)) {
+        fruit2->active = true;
+        switch (difficulty) {
+        case 1:
+            fruit2->position = (Vector2){GetRandomValue(0, (screenWidth/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.x/2, GetRandomValue(0, (fieldHeight/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.y/2};
+            break;
+        
+        case 2:
+            fruit2->position = (Vector2){GetRandomValue(1, (screenWidth/SQUARE_SIZE) - 2)*SQUARE_SIZE + offset.x/2, GetRandomValue(0, (fieldHeight/SQUARE_SIZE) - 1)*SQUARE_SIZE + offset.y/2};                    
+            break;
+
+        case 3:
+            fruit2->position = (Vector2){GetRandomValue(1, (screenWidth/SQUARE_SIZE) - 2)*SQUARE_SIZE + offset.x/2, GetRandomValue(1, (fieldHeight/SQUARE_SIZE) - 2)*SQUARE_SIZE + offset.y/2};                    
+            break;
+        }
+
+        for (int i = 0; i < tailLength; i++) { // if the fruit generates on the snake
+            while ((fruit2->position.x == snake[i].position.x) && (fruit2->position.y == snake[i].position.y)) {
+                fruit2->position = (Vector2){ GetRandomValue(1, (screenWidth/SQUARE_SIZE) - 2)*SQUARE_SIZE + offset.x/2, GetRandomValue(1, (fieldHeight/SQUARE_SIZE) - 2)*SQUARE_SIZE + offset.y/2 };
+                i = 0;
+            }
+        }
+
+        // if superFruit generates on usual fruit или наоборот
+        if(isSuperFruit) {
+            while ((fruit.position.x == fruit2->position.x) && (fruit.position.y == fruit2->position.y)) {
+                fruit2->position = (Vector2){ GetRandomValue(1, (screenWidth/SQUARE_SIZE) - 2)*SQUARE_SIZE + offset.x/2, GetRandomValue(1, (fieldHeight/SQUARE_SIZE) - 2)*SQUARE_SIZE + offset.y/2 };
+            }
+        } else {
+            while ((superFruit.position.x == fruit2->position.x) && (superFruit.position.y == fruit2->position.y)) {
+                fruit2->position = (Vector2){ GetRandomValue(1, (screenWidth/SQUARE_SIZE) - 2)*SQUARE_SIZE + offset.x/2, GetRandomValue(1, (fieldHeight/SQUARE_SIZE) - 2)*SQUARE_SIZE + offset.y/2 };
+            }
+        }
+    }
+
+    // Collision with the fruit (when head is on it already)
+    if ((snake[0].position.x < (fruit2->position.x + fruit2->size.x) && (snake[0].position.x + snake[0].size.x) > fruit2->position.x) &&
+        (snake[0].position.y < (fruit2->position.y + fruit2->size.y) && (snake[0].position.y + snake[0].size.y) > fruit2->position.y))
+    {
+        snake[tailLength].position = snakePosition[tailLength - 1];
+        tailLength += 1;
+        score += 1;
+        fruit2->active = false;
+        *allowSuperFruit2 = false;
+    }
 }
